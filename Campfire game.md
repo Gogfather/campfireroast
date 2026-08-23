@@ -44,6 +44,14 @@ npm run dev
 ```
 Then open the printed local URL (default `http://localhost:5173`) in a browser.
 
+### Deployment
+Live playtest build: **https://campfireroast.thegogfather.com**
+
+- GitHub: `Gogfather/campfireroast` (`main` branch), auto-deployed to Vercel on every push.
+- DNS: CNAME `campfireroast.thegogfather.com` → `campfireroast.vercel.app`, set as **DNS only** in Cloudflare (proxy/orange-cloud must stay off — Cloudflare's proxy blocks Vercel's SSL verification).
+- Custom domain is registered under the Vercel project's Settings → Domains.
+- Preview deployments (other branches/PRs) get their own auto-generated `*.vercel.app` URLs and are separate from this production domain.
+
 ### Known gaps (expected for a POC, not yet addressed)
 - No real art — fire/marshmallow are placeholder shapes (circle, triangle, ellipse).
 - No sound.
