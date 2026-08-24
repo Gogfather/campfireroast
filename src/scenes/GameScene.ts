@@ -22,6 +22,9 @@ const FIRE_CENTER_Y = 235;
 const PIT_RADIUS_X = 80;
 const PIT_RADIUS_Y = 34;
 
+const INK = 0x1a120d;
+const INK_WIDTH = 3;
+
 type Band = { name: string; max: number; color: number; scoreLabel: string };
 
 const DONENESS_BANDS: Band[] = [
@@ -102,7 +105,7 @@ export class GameScene extends Phaser.Scene {
 
     // --- Marshmallow (position moves along a line above the fire based on distance) ---
     this.marshmallowGfx = this.add.ellipse(width / 2, 160, 34, 26, 0xf3e9d2);
-    this.marshmallowGfx.setStrokeStyle(2, 0x00000033);
+    this.marshmallowGfx.setStrokeStyle(INK_WIDTH, INK, 1);
 
     this.fireWarningText = this.add
       .text(width / 2, 220, "🔥 ON FIRE — BLOW! 🔥", {
@@ -192,31 +195,49 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createFirePit(centerX: number, centerY: number): void {
-    // Stone ring around the pit, viewed at a slight angle (squashed ellipse).
+    // Dirt floor inside the stone ring, grounds the whole scene.
+    this.add
+      .ellipse(centerX, centerY, PIT_RADIUS_X * 1.7, PIT_RADIUS_Y * 1.7, 0x4a3a2f)
+      .setStrokeStyle(INK_WIDTH, INK, 1);
+
+    // Stone ring, block-shaded: flat base color + a lighter highlight facet, both hard-outlined.
     const stoneCount = 16;
+    const stonePalette = [
+      { base: 0x9c9485, highlight: 0xc7bdac },
+      { base: 0x8a8378, highlight: 0xb5ac9c },
+      { base: 0x7d7568, highlight: 0xa89f8e },
+      { base: 0xaba290, highlight: 0xd4c9b0 },
+    ];
     for (let i = 0; i < stoneCount; i++) {
       const angle = (i / stoneCount) * Math.PI * 2;
       const jitter = Phaser.Math.FloatBetween(-4, 4);
       const sx = centerX + Math.cos(angle) * (PIT_RADIUS_X + jitter);
       const sy = centerY + Math.sin(angle) * (PIT_RADIUS_Y + jitter * 0.4);
-      const size = Phaser.Math.Between(9, 14);
-      const shade = Phaser.Utils.Array.GetRandom([0x8a8378, 0x9c9485, 0x7d7568, 0xaba290]);
-      this.add.ellipse(sx, sy, size, size * 0.8, shade).setStrokeStyle(1, 0x000000, 0.2);
+      const size = Phaser.Math.Between(11, 16);
+      const { base, highlight } = Phaser.Utils.Array.GetRandom(stonePalette);
+      this.add.ellipse(sx, sy, size, size * 0.8, base).setStrokeStyle(INK_WIDTH, INK, 1);
+      this.add
+        .ellipse(sx - size * 0.18, sy - size * 0.16, size * 0.42, size * 0.32, highlight)
+        .setStrokeStyle(2, INK, 1);
     }
 
-    // Randomly placed logs inside the pit.
+    // Randomly placed logs, drawn like cut firewood: flat body + a lighter cut-end cap with growth rings.
     const logCount = Phaser.Math.Between(5, 7);
+    const logBodies = [0x6b4423, 0x5a3820, 0x7a5230, 0x4f3018];
     for (let i = 0; i < logCount; i++) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       const radiusFrac = Phaser.Math.FloatBetween(0, 0.7);
       const lx = centerX + Math.cos(angle) * PIT_RADIUS_X * 0.55 * radiusFrac;
       const ly = centerY + Math.sin(angle) * PIT_RADIUS_Y * 0.55 * radiusFrac;
       const length = Phaser.Math.Between(46, 72);
-      const logColor = Phaser.Utils.Array.GetRandom([0x6b4423, 0x5a3820, 0x7a5230, 0x4f3018]);
-      this.add
-        .rectangle(lx, ly, length, 11, logColor)
-        .setStrokeStyle(1, 0x000000, 0.35)
-        .setRotation(Phaser.Math.FloatBetween(-1, 1));
+      const rot = Phaser.Math.FloatBetween(-1, 1);
+      const logColor = Phaser.Utils.Array.GetRandom(logBodies);
+      this.add.rectangle(lx, ly, length, 13, logColor).setStrokeStyle(INK_WIDTH, INK, 1).setRotation(rot);
+
+      const capX = lx + Math.cos(rot) * (length / 2 - 2);
+      const capY = ly + Math.sin(rot) * (length / 2 - 2);
+      this.add.circle(capX, capY, 7, 0xe8c895).setStrokeStyle(2.5, INK, 1);
+      this.add.circle(capX, capY, 3.5, 0xc9a06a).setStrokeStyle(1.5, INK, 1);
     }
 
     // Glow beneath the flames, scales with heat.
