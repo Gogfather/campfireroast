@@ -18,6 +18,10 @@ const ROTATE_WINDOW_MS = 1800;
 const EVENNESS_DECAY_PER_SEC = 14; // only applied once the rotate window has expired
 const ROTATE_RESTORE_AMOUNT = 18;
 
+const FIRE_CENTER_Y = 235;
+const PIT_RADIUS_X = 80;
+const PIT_RADIUS_Y = 34;
+
 type Band = { name: string; max: number; color: number; scoreLabel: string };
 
 const DONENESS_BANDS: Band[] = [
@@ -48,8 +52,8 @@ export class GameScene extends Phaser.Scene {
   private gameOver!: boolean;
 
   // display objects, assigned in create()
-  private fireGfx!: Phaser.GameObjects.Arc;
-  private flameGfx!: Phaser.GameObjects.Triangle;
+  private fireGlow!: Phaser.GameObjects.Ellipse;
+  private fireEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
   private marshmallowGfx!: Phaser.GameObjects.Ellipse;
   private fireWarningText!: Phaser.GameObjects.Text;
   private resultText!: Phaser.GameObjects.Text;
@@ -93,20 +97,8 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // --- Fire ---
-    this.fireGfx = this.add.circle(width / 2, 220, 40, 0xff7a1a, 0.9);
-    this.flameGfx = this.add.triangle(
-      width / 2,
-      220,
-      -30,
-      30,
-      30,
-      30,
-      0,
-      -60,
-      0xffb347,
-      0.9
-    );
+    // --- Fire pit ---
+    this.createFirePit(width / 2, FIRE_CENTER_Y);
 
     // --- Marshmallow (position moves along a line above the fire based on distance) ---
     this.marshmallowGfx = this.add.ellipse(width / 2, 160, 34, 26, 0xf3e9d2);
@@ -197,6 +189,67 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
     this.playAgainButton.on("pointerdown", () => this.scene.restart());
+  }
+
+  private createFirePit(centerX: number, centerY: number): void {
+    // Stone ring around the pit, viewed at a slight angle (squashed ellipse).
+    const stoneCount = 16;
+    for (let i = 0; i < stoneCount; i++) {
+      const angle = (i / stoneCount) * Math.PI * 2;
+      const jitter = Phaser.Math.FloatBetween(-4, 4);
+      const sx = centerX + Math.cos(angle) * (PIT_RADIUS_X + jitter);
+      const sy = centerY + Math.sin(angle) * (PIT_RADIUS_Y + jitter * 0.4);
+      const size = Phaser.Math.Between(9, 14);
+      const shade = Phaser.Utils.Array.GetRandom([0x8a8378, 0x9c9485, 0x7d7568, 0xaba290]);
+      this.add.ellipse(sx, sy, size, size * 0.8, shade).setStrokeStyle(1, 0x000000, 0.2);
+    }
+
+    // Randomly placed logs inside the pit.
+    const logCount = Phaser.Math.Between(5, 7);
+    for (let i = 0; i < logCount; i++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const radiusFrac = Phaser.Math.FloatBetween(0, 0.7);
+      const lx = centerX + Math.cos(angle) * PIT_RADIUS_X * 0.55 * radiusFrac;
+      const ly = centerY + Math.sin(angle) * PIT_RADIUS_Y * 0.55 * radiusFrac;
+      const length = Phaser.Math.Between(46, 72);
+      const logColor = Phaser.Utils.Array.GetRandom([0x6b4423, 0x5a3820, 0x7a5230, 0x4f3018]);
+      this.add
+        .rectangle(lx, ly, length, 11, logColor)
+        .setStrokeStyle(1, 0x000000, 0.35)
+        .setRotation(Phaser.Math.FloatBetween(-1, 1));
+    }
+
+    // Glow beneath the flames, scales with heat.
+    this.fireGlow = this.add.ellipse(centerX, centerY, 70, 30, 0xff7a1a, 0.5);
+    this.fireGlow.setBlendMode(Phaser.BlendModes.ADD);
+
+    // Rising flame particles, rate scales with heat.
+    this.ensureFlameTexture();
+    this.fireEmitter = this.add.particles(centerX, centerY - 6, "flame-particle", {
+      x: { min: -22, max: 22 },
+      y: { min: -6, max: 6 },
+      lifespan: { min: 500, max: 850 },
+      speedY: { min: -95, max: -55 },
+      speedX: { min: -18, max: 18 },
+      scale: { start: 0.9, end: 0.05 },
+      alpha: { start: 0.9, end: 0 },
+      tint: [0xfff2b0, 0xffb347, 0xff7a1a, 0xd94f1e],
+      blendMode: "ADD",
+      frequency: 70,
+    });
+  }
+
+  private ensureFlameTexture(): void {
+    if (this.textures.exists("flame-particle")) return;
+    const g = this.add.graphics();
+    g.fillStyle(0xffffff, 0.2);
+    g.fillCircle(16, 16, 16);
+    g.fillStyle(0xffffff, 0.5);
+    g.fillCircle(16, 16, 11);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(16, 16, 6);
+    g.generateTexture("flame-particle", 32, 32);
+    g.destroy();
   }
 
   private buildMeter(
@@ -321,13 +374,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private render(): void {
-    // Fire visual scales with heat.
-    const heatScale = 0.6 + (this.heat / MAX_HEAT) * 0.8;
-    this.fireGfx.setScale(heatScale);
-    this.flameGfx.setScale(heatScale);
+    // Fire visual intensity scales with heat.
+    const heatFrac = this.heat / MAX_HEAT;
+    this.fireGlow.setScale(0.6 + heatFrac * 0.9);
+    this.fireGlow.setAlpha(0.25 + heatFrac * 0.5);
+    this.fireEmitter.setFrequency(Phaser.Math.Linear(160, 22, heatFrac));
 
     // Marshmallow moves within a fixed zone above the fire, clear of the meters/slider below.
-    const nearFireY = this.fireGfx.y - 45;
+    const nearFireY = FIRE_CENTER_Y - PIT_RADIUS_Y - 20;
     const farAwayY = 95;
     this.marshmallowGfx.y = Phaser.Math.Linear(nearFireY, farAwayY, this.distance);
     this.marshmallowGfx.fillColor = bandFor(this.doneness).color;

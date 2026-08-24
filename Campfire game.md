@@ -47,14 +47,36 @@ Then open the printed local URL (default `http://localhost:5173`) in a browser.
 ### Deployment
 Live playtest build: **https://campfireroast.thegogfather.com**
 
-- GitHub: `Gogfather/campfireroast` (`main` branch), auto-deployed to Vercel on every push.
-- DNS: CNAME `campfireroast.thegogfather.com` → `campfireroast.vercel.app`, set as **DNS only** in Cloudflare (proxy/orange-cloud must stay off — Cloudflare's proxy blocks Vercel's SSL verification).
-- Custom domain is registered under the Vercel project's Settings → Domains.
-- Preview deployments (other branches/PRs) get their own auto-generated `*.vercel.app` URLs and are separate from this production domain.
+- GitHub: `Gogfather/campfireroast`. Branch structure: `main` (day-to-day work), `production` (Vercel Production environment — deploys to campfireroast.thegogfather.com), `preview` (Vercel Preview environment — deploys to preview.campfireroast.thegogfather.com), `ui` (visual/UI exploration, previewed via Vercel's auto-generated branch URL rather than a custom domain).
+- DNS: Cloudflare CNAMEs for each custom subdomain, all set as **DNS only** (proxy/orange-cloud off — Cloudflare's proxy blocks Vercel's SSL verification). Use whatever exact CNAME target Vercel's Domains page shows for that specific hostname (it issues a unique per-domain target, e.g. `<hash>.vercel-dns-0NN.com`).
+- Custom domains are registered per-environment under the Vercel project's Settings → Domains, with Branch Tracking set per environment under Settings → Environments.
 
 ### Known gaps (expected for a POC, not yet addressed)
-- No real art — fire/marshmallow are placeholder shapes (circle, triangle, ellipse).
 - No sound.
 - No persistence of high scores between sessions.
 - Scoring/balance numbers (cook rate, scorch rate, decay rates, band thresholds) are first-pass guesses — need real playtesting to tune.
+- Marshmallow itself is still a placeholder ellipse (color-shifts with doneness); no character/hand art yet.
+
+## Fire pit visual redesign (`ui` branch, 2026-08-23)
+
+Reworked the fire from a plain circle+triangle into a proper stone fire pit scene, built entirely from Phaser primitives and a runtime-generated particle texture (no external art assets):
+- **Stone ring**: 16 small stone shapes arranged in a squashed ellipse around the pit, random size/shade per stone.
+- **Randomly placed logs**: 5-7 rectangles scattered and rotated inside the pit, re-randomized every time the scene loads/restarts, per varying brown shades.
+- **Glow**: an additive-blended ellipse under the logs that grows and brightens with fire heat.
+- **Flame particles**: a rising-particle emitter (soft radial-gradient texture, orange/yellow/red tint range, additive blend) whose emission rate scales with fire heat — sparse embers when low, a lively flame burst near max heat.
+
+This was a **visual-only** pass — the underlying mechanic (single heat scalar, linear near/far distance slider) is unchanged for now. Verified working via headless-browser screenshots at both low and high heat.
+
+## Future core requirement: materials & spatial heat (not yet built)
+
+Design intent captured 2026-08-23, to be built after the visual pass above, likely alongside or before the multiplayer competitive-fire work:
+
+- Heat should stop being a single global scalar and become **spatially distributed across the fire pit** — different areas of the pit can be hotter or cooler at the same time, rather than one uniform "heat" value.
+- Players add specific **materials** to the fire (instead of one generic "stoke" action) at a location in the pit. Each material has:
+  - **Effective time** — how long its heat contribution lasts before burning out.
+  - **Spread** — how far its heat effect radiates from where it's placed.
+  - **Intensity** — how much heat/temperature it contributes at its peak.
+  - **Color treatment** — each material should tint the flame differently (like chemical flame-coloring), giving visual feedback on what's currently fueling the fire.
+- Because hot spots move and decay as materials are added/burn out, **players need to physically reposition their marshmallow** around the pit to chase the right temperature zone, rather than just choosing a near/far distance on one axis.
+- This implies moving from the current 1D distance slider to full 2D positioning around the fire pit, and reworking the heat model into a spatial field rather than a scalar. Scope and specific starting materials still need to be defined before implementation.
 
