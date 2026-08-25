@@ -25,6 +25,19 @@ const PIT_RADIUS_Y = 34;
 const INK = 0x1a120d;
 const INK_WIDTH = 3;
 
+const FLAME_SIZES = ["xs", "s", "m", "l", "xl"] as const;
+type FlameSize = (typeof FLAME_SIZES)[number];
+const FLAME_FRAME_COUNT = 12;
+const FLAME_SOURCE_SIZE = 260; // native SVG canvas size (square)
+const FLAME_ANCHOR_X = 130 / FLAME_SOURCE_SIZE; // fraction: flame base center
+const FLAME_ANCHOR_Y = 183 / FLAME_SOURCE_SIZE; // fraction: flame base sits here across all frames/sizes
+const FLAME_DISPLAY_SCALE = 0.6;
+
+function flameSizeForHeat(heatFrac: number): FlameSize {
+  const index = Math.min(FLAME_SIZES.length - 1, Math.floor(heatFrac * FLAME_SIZES.length));
+  return FLAME_SIZES[index];
+}
+
 type Band = { name: string; max: number; color: number; scoreLabel: string };
 
 const DONENESS_BANDS: Band[] = [
@@ -55,8 +68,8 @@ export class GameScene extends Phaser.Scene {
   private gameOver!: boolean;
 
   // display objects, assigned in create()
-  private fireGlow!: Phaser.GameObjects.Ellipse;
-  private fireEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private flameSprite!: Phaser.GameObjects.Sprite;
+  private currentFlameSize!: FlameSize;
   private marshmallowGfx!: Phaser.GameObjects.Ellipse;
   private fireWarningText!: Phaser.GameObjects.Text;
   private resultText!: Phaser.GameObjects.Text;
@@ -73,6 +86,22 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super("GameScene");
+  }
+
+  preload(): void {
+    for (const size of FLAME_SIZES) {
+      for (let i = 1; i <= FLAME_FRAME_COUNT; i++) {
+        const frame = String(i).padStart(2, "0");
+        this.load.svg(this.flameFrameKey(size, i), `/flame/${size}/frame_${frame}.svg`, {
+          width: FLAME_SOURCE_SIZE,
+          height: FLAME_SOURCE_SIZE,
+        });
+      }
+    }
+  }
+
+  private flameFrameKey(size: FlameSize, frame: number): string {
+    return `flame-${size}-${frame}`;
   }
 
   private resetState(): void {
@@ -240,37 +269,32 @@ export class GameScene extends Phaser.Scene {
       this.add.circle(capX, capY, 3.5, 0xc9a06a).setStrokeStyle(1.5, INK, 1);
     }
 
-    // Glow beneath the flames, scales with heat.
-    this.fireGlow = this.add.ellipse(centerX, centerY, 70, 30, 0xff7a1a, 0.5);
-    this.fireGlow.setBlendMode(Phaser.BlendModes.ADD);
-
-    // Rising flame particles, rate scales with heat.
-    this.ensureFlameTexture();
-    this.fireEmitter = this.add.particles(centerX, centerY - 6, "flame-particle", {
-      x: { min: -22, max: 22 },
-      y: { min: -6, max: 6 },
-      lifespan: { min: 500, max: 850 },
-      speedY: { min: -95, max: -55 },
-      speedX: { min: -18, max: 18 },
-      scale: { start: 0.9, end: 0.05 },
-      alpha: { start: 0.9, end: 0 },
-      tint: [0xfff2b0, 0xffb347, 0xff7a1a, 0xd94f1e],
-      blendMode: "ADD",
-      frequency: 70,
-    });
+    // Animated flame, drawn from hand-authored SVG frames. Size tier swaps with heat.
+    this.ensureFlameAnimations();
+    this.currentFlameSize = "s";
+    this.flameSprite = this.add.sprite(centerX, centerY - 5, this.flameFrameKey(this.currentFlameSize, 1));
+    this.flameSprite.setOrigin(FLAME_ANCHOR_X, FLAME_ANCHOR_Y);
+    this.flameSprite.setScale(FLAME_DISPLAY_SCALE);
+    this.flameSprite.play(this.flameAnimKey(this.currentFlameSize));
   }
 
-  private ensureFlameTexture(): void {
-    if (this.textures.exists("flame-particle")) return;
-    const g = this.add.graphics();
-    g.fillStyle(0xffffff, 0.2);
-    g.fillCircle(16, 16, 16);
-    g.fillStyle(0xffffff, 0.5);
-    g.fillCircle(16, 16, 11);
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(16, 16, 6);
-    g.generateTexture("flame-particle", 32, 32);
-    g.destroy();
+  private flameAnimKey(size: FlameSize): string {
+    return `flame-anim-${size}`;
+  }
+
+  private ensureFlameAnimations(): void {
+    for (const size of FLAME_SIZES) {
+      const key = this.flameAnimKey(size);
+      if (this.anims.exists(key)) continue;
+      this.anims.create({
+        key,
+        frames: Array.from({ length: FLAME_FRAME_COUNT }, (_, i) => ({
+          key: this.flameFrameKey(size, i + 1),
+        })),
+        frameRate: 12,
+        repeat: -1,
+      });
+    }
   }
 
   private buildMeter(
@@ -395,11 +419,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private render(): void {
-    // Fire visual intensity scales with heat.
+    // Fire visual intensity scales with heat: swap to a taller/shorter flame size tier.
     const heatFrac = this.heat / MAX_HEAT;
-    this.fireGlow.setScale(0.6 + heatFrac * 0.9);
-    this.fireGlow.setAlpha(0.25 + heatFrac * 0.5);
-    this.fireEmitter.setFrequency(Phaser.Math.Linear(160, 22, heatFrac));
+    const targetSize = flameSizeForHeat(heatFrac);
+    if (targetSize !== this.currentFlameSize) {
+      this.currentFlameSize = targetSize;
+      this.flameSprite.play(this.flameAnimKey(targetSize));
+    }
 
     // Marshmallow moves within a fixed zone above the fire, clear of the meters/slider below.
     const nearFireY = FIRE_CENTER_Y - PIT_RADIUS_Y - 20;
