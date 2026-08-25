@@ -56,16 +56,22 @@ Live playtest build: **https://campfireroast.thegogfather.com**
 - No persistence of high scores between sessions.
 - Scoring/balance numbers (cook rate, scorch rate, decay rates, band thresholds) are first-pass guesses — need real playtesting to tune.
 - Marshmallow itself is still a placeholder ellipse (color-shifts with doneness); no character/hand art yet.
+- Flame animation is size-tiered (5 discrete steps), not continuously interpolated — a visible "pop" when heat crosses a tier boundary rather than a smooth grow/shrink.
 
 ## Fire pit visual redesign (`ui` branch, 2026-08-23)
 
-Reworked the fire from a plain circle+triangle into a proper stone fire pit scene, built entirely from Phaser primitives and a runtime-generated particle texture (no external art assets):
-- **Stone ring**: 16 small stone shapes arranged in a squashed ellipse around the pit, random size/shade per stone.
-- **Randomly placed logs**: 5-7 rectangles scattered and rotated inside the pit, re-randomized every time the scene loads/restarts, per varying brown shades.
-- **Glow**: an additive-blended ellipse under the logs that grows and brightens with fire heat.
-- **Flame particles**: a rising-particle emitter (soft radial-gradient texture, orange/yellow/red tint range, additive blend) whose emission rate scales with fire heat — sparse embers when low, a lively flame burst near max heat.
+Reworked the fire from a plain circle+triangle into a proper stone fire pit scene, built entirely from Phaser primitives (no external art assets):
+- **Stone ring**: 16 small stone shapes arranged in a squashed ellipse around the pit, random size/shade per stone, each with a lighter block-shaded highlight facet.
+- **Randomly placed logs**: 5-7 rectangles scattered and rotated inside the pit, re-randomized every time the scene loads/restarts, each with a cut-end cap and growth-ring detail.
+- **Dirt floor** grounding the pit, and bold black ink outlines on every shape for a cartoony, cel-shaded look.
 
-This was a **visual-only** pass — the underlying mechanic (single heat scalar, linear near/far distance slider) is unchanged for now. Verified working via headless-browser screenshots at both low and high heat.
+Verified working via headless-browser screenshots.
+
+## Animated flame (`ui` branch, 2026-08-24)
+
+Replaced the flame with a hand-authored 12-frame flicker animation, sourced from `campfire_frames_all_sizes` (background rect and the source art's own static logs stripped out via a one-off script, keeping just the flame+ember paths so they composite over our own stone pit). Frames live in `public/flame/<size>/frame_NN.svg` for five size tiers (xs/s/m/l/xl), loaded via Phaser's SVG loader and played as five separate looping animations. Fire heat picks the active tier (0-20%→xs ... 80-100%→xl), so the flame visibly grows taller — not just faster-flickering — as heat rises, with the flame's base anchor point staying fixed across all sizes/frames. Verified frame-to-frame pixel differences confirm the animation is actually advancing, not stuck on one frame.
+
+This was a **visual-only** pass — the underlying mechanic (single heat scalar, linear near/far distance slider) is unchanged for now.
 
 ## Future core requirement: materials & spatial heat (not yet built)
 
